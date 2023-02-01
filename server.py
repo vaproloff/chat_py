@@ -1,16 +1,39 @@
 import socket
+import threading
 
-HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
-PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
+HOST = "127.0.0.1"
+PORT = 55555
 
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.bind((HOST, PORT))
-    s.listen()
-    conn, addr = s.accept()
-    with conn:
-        print(f"Connected by {addr}")
+def hold_connection(connection, address):
+    with connection:
+        print(f"{address} connected")
+        username = connection.recv(1024).decode()
+        mailing(f"{username} joined chat")
         while True:
-            data = conn.recv(1024)
-            if not data:
-                break
-            conn.sendall(data)
+            try:
+                data = connection.recv(1024)
+                if not data.decode() == b'':
+                    mailing(f'{username} -> {data.decode()}')
+            except socket.error:
+                print(f"{address} disconnected")
+                clients.pop(address)
+                mailing(f"{username} has left.")
+                return
+
+def mailing(message):
+    for conn in clients.values():
+        conn.send(message.encode())
+    print(f'> {message}')
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as chat_socket_srv:
+    chat_socket_srv.bind((HOST, PORT))
+    chat_socket_srv.listen()
+    print(f'Server listening on {HOST}:{PORT}...')
+    clients = {}
+
+    while True:
+        connection, address = chat_socket_srv.accept()
+        if not clients.get(address):
+            clients[address] = connection
+        connection_thread = threading.Thread(target=hold_connection, args=[connection, address])
+        connection_thread.start()
